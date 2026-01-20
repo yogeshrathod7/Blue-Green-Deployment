@@ -80,30 +80,24 @@ pipeline {
             -o sonar-report.json
 
             echo "Creating HTML report..."
-            cat > sonar-report.html <<EOF
-            <html>
-            <head>
-              <title>SonarQube Scan Report - Multitier</title>
-              <style>
-                body { font-family: Arial; }
-                table { border-collapse: collapse; width: 100%; }
-                th, td { border: 1px solid #ddd; padding: 8px; }
-                th { background-color: #f2f2f2; }
-              </style>
-            </head>
-            <body>
-              <h1>SonarQube Scan Report</h1>
-              <p>Project: Multitier</p>
-              <p>Generated: $(date)</p>
-              <table>
-                <tr>
-                  <th>Type</th>
-                  <th>Severity</th>
-                  <th>Component</th>
-                  <th>Line</th>
-                  <th>Message</th>
-                </tr>
-            EOF
+            {
+              echo "<html>"
+              echo "<head>"
+              echo "<title>SonarQube Scan Report - Multitier</title>"
+              echo "<style>"
+              echo "body { font-family: Arial; }"
+              echo "table { border-collapse: collapse; width: 100%; }"
+              echo "th, td { border: 1px solid #ddd; padding: 8px; }"
+              echo "th { background-color: #f2f2f2; }"
+              echo "</style>"
+              echo "</head>"
+              echo "<body>"
+              echo "<h1>SonarQube Scan Report</h1>"
+              echo "<p>Project: Multitier</p>"
+              echo "<p>Generated: $(date)</p>"
+              echo "<table>"
+              echo "<tr><th>Type</th><th>Severity</th><th>Component</th><th>Line</th><th>Message</th></tr>"
+            } > sonar-report.html
 
             jq -r '.issues[] | [.type, .severity, .component, (.line // "NA"), .message] | @tsv' sonar-report.json |
             while IFS=$'\\t' read -r type severity component line message
@@ -116,7 +110,8 @@ pipeline {
             echo "Converting HTML to PDF..."
             wkhtmltopdf sonar-report.html sonar-report.pdf
 
-            ls -lh sonar-report.pdf
+            echo "Final files:"
+            ls -lh sonar-report.html sonar-report.pdf
             '''
         }
 
