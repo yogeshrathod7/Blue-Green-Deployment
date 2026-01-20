@@ -1,50 +1,84 @@
 #!/bin/bash
 set -e
 
-SONAR_URL="http://98.94.90.125:9000"
-PROJECT_KEY="Multitier"
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-COMMIT_ID=$(git rev-parse --short HEAD)
+########################################
+# CONFIGURATION
+########################################
 
-JSON="sonar-report.json"
-HTML="sonar-report.html"
-PDF="sonar-report.pdf"
-TEMPLATE="sonar/sonar-executive-report.html"
+SONAR_URL="http://localhost:9000"
+PROJECT_KEY="Multitier"
+SONAR_TOKEN="PUT_YOUR_SONAR_TOKEN_HERE"
+
+OUTPUT_DIR="sonar-report"
+HTML_REPORT="${OUTPUT_DIR}/sonar-report.html"
+JSON_REPORT="${OUTPUT_DIR}/sonar-report.json"
+PDF_REPORT="${OUTPUT_DIR}/sonar-report.pdf"
+
+########################################
+# PREPARE
+########################################
+
+echo "Preparing SonarQube report directory..."
+mkdir -p ${OUTPUT_DIR}
+
+########################################
+# FETCH DATA FROM SONARQUBE
+########################################
+
+echo "Fetching issues from SonarQube..."
 
 curl -s -u ${SONAR_TOKEN}: \
 "${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&ps=500" \
--o ${JSON}
+-o ${JSON_REPORT}
 
-TOTAL=$(jq '.total' ${JSON})
-BUGS=$(jq '[.issues[]|select(.type=="BUG")]|length' ${JSON})
-VULNS=$(jq '[.issues[]|select(.type=="VULNERABILITY")]|length' ${JSON})
-SMELLS=$(jq '[.issues[]|select(.type=="CODE_SMELL")]|length' ${JSON})
-HOTSPOTS=$(jq '[.issues[]|select(.securityHotspot==true)]|length' ${JSON})
+########################################
+# GENERATE HTML REPORT
+########################################
 
-QG="FAILED"
-QG_CLASS="fail"
+echo "Generating HTML report..."
 
-ISSUE_ROWS=$(jq -r '
-  .issues[] |
-  "<tr><td>" + .type + "</td>" +
-  "<td class=\"severity-" + .severity + "\">" + .severity + "</td>" +
-  "<td>" + .component + "</td>" +
-  "<td>" + ((.line|tostring)//"NA") + "</td>" +
-  "<td>" + .message + "</td></tr>"
-' ${JSON})
+cat <<EOF > ${HTML_REPORT}
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SonarQube Report - ${PROJECT_KEY}</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f5f5f5; }
+    h1 { background: #4CAF50; color: white; padding: 10px; }
+    pre { background: white; padding: 15px; border-radius: 5px; }
+  </style>
+</head>
+<body>
 
-sed -e "s|{{PROJECT_NAME}}|${PROJECT_KEY}|g" \
-    -e "s|{{BRANCH}}|${BRANCH}|g" \
-    -e "s|{{COMMIT_ID}}|${COMMIT_ID}|g" \
-    -e "s|{{GENERATED_DATE}}|$(date)|g" \
-    -e "s|{{QUALITY_GATE}}|${QG}|g" \
-    -e "s|{{QG_CLASS}}|${QG_CLASS}|g" \
-    -e "s|{{TOTAL_ISSUES}}|${TOTAL}|g" \
-    -e "s|{{BUGS}}|${BUGS}|g" \
-    -e "s|{{VULNERABILITIES}}|${VULNS}|g" \
-    -e "s|{{SECURITY_HOTSPOTS}}|${HOTSPOTS}|g" \
-    -e "s|{{CODE_SMELLS}}|${SMELLS}|g" \
-    -e "s|{{ISSUE_ROWS}}|${ISSUE_ROWS}|g" \
-    ${TEMPLATE} > ${HTML}
+<h1>SonarQube Scan Report</h1>
+<p><strong>Project:</strong> ${PROJECT_KEY}</p>
+<p><strong>Generated On:</strong> $(date)</p>
 
-wkhtmltopdf ${HTML} ${PDF}
+<h2>Raw Issues (JSON)</h2>
+<pre>
+$(cat ${JSON_REPORT})
+</pre>
+
+</body>
+</html>
+EOF
+
+echo "HTML report generated: ${HTML_REPORT}"
+
+########################################
+# OPTIONAL: GENERATE PDF (if tool exists)
+########################################
+
+if command -v wkhtmltopdf >/dev/null 2>&1; then
+  echo "Generating PDF report..."
+  wkhtmltopdf ${HTML_REPORT} ${PDF_REPORT}
+  echo "PDF report generated: ${PDF_REPORT}"
+else
+  echo "wkhtmltopdf not installed. Skipping PDF generation."
+fi
+
+########################################
+# DONE
+########################################
+
+echo "SonarQube report generation completed successfully."
