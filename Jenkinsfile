@@ -70,11 +70,11 @@ pipeline {
             sh '''
             set -e
 
-            echo "🔎 Checking required tools..."
+            echo "Checking tools..."
             jq --version
             wkhtmltopdf --version
 
-            echo "📥 Fetching SonarQube issues via API..."
+            echo "Fetching SonarQube issues..."
             curl -s -u ${SONAR_TOKEN}: \
             "http://98.94.90.125:9000/api/issues/search?componentKeys=Multitier&ps=500" \
             -o sonar-report.json
@@ -84,77 +84,34 @@ pipeline {
             VULNS=$(jq '[.issues[] | select(.type=="VULNERABILITY")] | length' sonar-report.json)
             CODE_SMELLS=$(jq '[.issues[] | select(.type=="CODE_SMELL")] | length' sonar-report.json)
 
-            echo "📝 Creating Executive HTML report..."
+            echo "Building issue rows..."
+            ISSUE_ROWS=$(jq -r '
+              .issues[] |
+              "<tr>
+                <td>" + .type + "</td>
+                <td class=\\"severity-" + .severity + "\\">" + .severity + "</td>
+                <td>" + .component + "</td>
+                <td>" + ((.line|tostring) // "NA") + "</td>
+                <td>" + .message + "</td>
+              </tr>"
+            ' sonar-report.json)
 
-            {
-              echo "<html><head><title>SonarQube Executive Report</title>"
-              echo "<style>
-                body { font-family: Arial, sans-serif; margin: 40px; }
-                h1 { color: #2c7be5; }
-                h2 { color: #333; border-bottom: 2px solid #ddd; padding-bottom: 6px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-                th, td { border: 1px solid #ccc; padding: 8px; font-size: 13px; }
-                th { background-color: #f4f6f8; }
-                .good { color: green; font-weight: bold; }
-                .bad { color: red; font-weight: bold; }
-                .footer { margin-top: 40px; font-size: 12px; color: #777; }
-              </style></head><body>"
+            echo "Generating HTML from template..."
+            sed -e "s|{{PROJECT_NAME}}|Multitier|g" \
+                -e "s|{{ENVIRONMENT}}|PRODUCTION|g" \
+                -e "s|{{GENERATED_DATE}}|$(date)|g" \
+                -e "s|{{QUALITY_GATE}}|PASSED|g" \
+                -e "s|{{TOTAL_ISSUES}}|${TOTAL_ISSUES}|g" \
+                -e "s|{{BUGS}}|${BUGS}|g" \
+                -e "s|{{VULNERABILITIES}}|${VULNS}|g" \
+                -e "s|{{CODE_SMELLS}}|${CODE_SMELLS}|g" \
+                -e "s|{{ISSUE_ROWS}}|${ISSUE_ROWS}|g" \
+                sonar/sonar-executive-report.html \
+                > sonar-report.html
 
-              echo "<h1>SonarQube Code Quality Executive Report</h1>"
-              echo "<p><b>Project:</b> Multitier</p>"
-              echo "<p><b>Environment:</b> PRODUCTION</p>"
-              echo "<p><b>Generated:</b> $(date)</p>"
-              echo "<hr/>"
-
-              echo "<h2>Executive Summary</h2>"
-              echo "<table>"
-              echo "<tr><th>Metric</th><th>Value</th></tr>"
-              echo "<tr><td>Quality Gate</td><td class='good'>PASSED</td></tr>"
-              echo "<tr><td>Total Issues</td><td>${TOTAL_ISSUES}</td></tr>"
-              echo "<tr><td>Bugs</td><td>${BUGS}</td></tr>"
-              echo "<tr><td>Vulnerabilities</td><td>${VULNS}</td></tr>"
-              echo "<tr><td>Code Smells</td><td>${CODE_SMELLS}</td></tr>"
-              echo "<tr><td>Reliability Rating</td><td class='good'>A</td></tr>"
-              echo "<tr><td>Security Rating</td><td class='good'>A</td></tr>"
-              echo "<tr><td>Maintainability Rating</td><td class='good'>A</td></tr>"
-              echo "</table>"
-
-              echo "<h2>Detailed Issue Report</h2>"
-              echo "<table>"
-              echo "<tr>
-                      <th>Type</th>
-                      <th>Severity</th>
-                      <th>Component</th>
-                      <th>Line</th>
-                      <th>Description</th>
-                    </tr>"
-            } > sonar-report.html
-
-            jq -r '.issues[] | [.type, .severity, .component, (.line // "NA"), .message] | @tsv' sonar-report.json |
-            while IFS=$'\\t' read -r type severity component line message
-            do
-              echo "<tr>
-                      <td>$type</td>
-                      <td>$severity</td>
-                      <td>$component</td>
-                      <td>$line</td>
-                      <td>$message</td>
-                    </tr>" >> sonar-report.html
-            done
-
-            echo "</table>" >> sonar-report.html
-
-            echo "<div class='footer'>
-                    <p>Report generated automatically by CI/CD pipeline</p>
-                    <p>Tool: SonarQube Community Edition</p>
-                    <p>Purpose: Production Code Quality Assessment</p>
-                  </div>
-                  </body></html>" >> sonar-report.html
-
-            echo "📄 Converting HTML to PDF..."
+            echo "Converting HTML to PDF..."
             wkhtmltopdf sonar-report.html sonar-report.pdf
 
-            echo "✅ PDF generated successfully:"
             ls -lh sonar-report.pdf
             '''
         }
@@ -162,7 +119,6 @@ pipeline {
         archiveArtifacts artifacts: 'sonar-report.pdf'
     }
 }
-
 
         
         stage('Build') {
