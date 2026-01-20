@@ -1,118 +1,70 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8">
-  <title>SonarQube Executive Code Quality Report</title>
-
+  <title>SonarQube Production Code Quality Report</title>
   <style>
-    body {
-      font-family: Arial, Helvetica, sans-serif;
-      margin: 40px;
-      color: #333;
-    }
-
-    h1 {
-      color: #2c7be5;
-      border-bottom: 3px solid #2c7be5;
-      padding-bottom: 10px;
-    }
-
-    h2 {
-      margin-top: 40px;
-      color: #444;
-      border-bottom: 2px solid #ddd;
-      padding-bottom: 6px;
-    }
-
-    .meta p {
-      margin: 4px 0;
-      font-size: 14px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 15px;
-      font-size: 13px;
-    }
-
-    th {
-      background-color: #f4f6f8;
-      border: 1px solid #ccc;
-      padding: 8px;
-      text-align: left;
-    }
-
-    td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      vertical-align: top;
-    }
-
-    .status-pass {
-      color: green;
-      font-weight: bold;
-    }
-
-    .footer {
-      margin-top: 50px;
-      font-size: 12px;
-      color: #777;
-      border-top: 1px solid #ddd;
-      padding-top: 10px;
-    }
-
+    body { font-family: Arial; margin: 40px; color: #333; }
+    h1 { color: #2c7be5; border-bottom: 3px solid #2c7be5; }
+    h2 { margin-top: 35px; border-bottom: 2px solid #ddd; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { border: 1px solid #ccc; padding: 8px; font-size: 13px; }
+    th { background: #f4f6f8; }
+    .pass { color: green; font-weight: bold; }
+    .fail { color: red; font-weight: bold; }
     .severity-BLOCKER { color: darkred; font-weight: bold; }
     .severity-CRITICAL { color: red; }
-    .severity-MAJOR { color: #e67e22; }
-    .severity-MINOR { color: #2980b9; }
-    .severity-INFO { color: gray; }
+    .severity-MAJOR { color: orange; }
+    .severity-MINOR { color: blue; }
+    .footer { margin-top: 40px; font-size: 12px; color: #777; }
   </style>
 </head>
 
 <body>
 
-<h1>SonarQube Code Quality Executive Report</h1>
+<h1>SonarQube Code Quality Report</h1>
 
-<div class="meta">
-  <p><b>Project:</b> {{PROJECT_NAME}}</p>
-  <p><b>Environment:</b> {{ENVIRONMENT}}</p>
-  <p><b>Generated On:</b> {{GENERATED_DATE}}</p>
-  <p><b>Quality Gate:</b> <span class="status-pass">{{QUALITY_GATE}}</span></p>
-</div>
+<p><b>Project:</b> {{PROJECT_NAME}}</p>
+<p><b>Environment:</b> PRODUCTION</p>
+<p><b>Branch:</b> {{BRANCH}}</p>
+<p><b>Commit ID:</b> {{COMMIT_ID}}</p>
+<p><b>Generated:</b> {{GENERATED_DATE}}</p>
+<p><b>Quality Gate:</b>
+  <span class="{{QG_CLASS}}">{{QUALITY_GATE}}</span>
+</p>
 
 <h2>Executive Summary</h2>
-
 <table>
-  <tr><th>Metric</th><th>Value</th></tr>
-  <tr><td>Total Issues</td><td>{{TOTAL_ISSUES}}</td></tr>
-  <tr><td>Bugs</td><td>{{BUGS}}</td></tr>
-  <tr><td>Vulnerabilities</td><td>{{VULNERABILITIES}}</td></tr>
-  <tr><td>Code Smells</td><td>{{CODE_SMELLS}}</td></tr>
-  <tr><td>Reliability Rating</td><td>A</td></tr>
-  <tr><td>Security Rating</td><td>A</td></tr>
-  <tr><td>Maintainability Rating</td><td>A</td></tr>
+<tr><th>Metric</th><th>Value</th></tr>
+<tr><td>Total Issues</td><td>{{TOTAL_ISSUES}}</td></tr>
+<tr><td>Bugs</td><td>{{BUGS}}</td></tr>
+<tr><td>Vulnerabilities</td><td>{{VULNERABILITIES}}</td></tr>
+<tr><td>Security Hotspots</td><td>{{SECURITY_HOTSPOTS}}</td></tr>
+<tr><td>Code Smells</td><td>{{CODE_SMELLS}}</td></tr>
+<tr><td>Reliability Rating</td><td>{{RELIABILITY}}</td></tr>
+<tr><td>Security Rating</td><td>{{SECURITY_RATING}}</td></tr>
+<tr><td>Maintainability</td><td>{{MAINTAINABILITY}}</td></tr>
 </table>
 
+<h2>Security Risk Summary (Production)</h2>
+<ul>
+  <li>{{VULNERABILITIES}} Vulnerabilities detected</li>
+  <li>{{SECURITY_HOTSPOTS}} Security hotspots require review</li>
+</ul>
+
 <h2>Detailed Issues</h2>
-
 <table>
-  <tr>
-    <th>Type</th>
-    <th>Severity</th>
-    <th>Component</th>
-    <th>Line</th>
-    <th>Description</th>
-  </tr>
-
-  {{ISSUE_ROWS}}
-
+<tr>
+  <th>Type</th><th>Severity</th><th>Component</th>
+  <th>Line</th><th>Description</th>
+</tr>
+{{ISSUE_ROWS}}
 </table>
 
 <div class="footer">
-  This report was generated automatically by the CI/CD pipeline.<br/>
-  Tool: SonarQube (Community Edition)<br/>
-  Purpose: Production Code Quality Assessment
+Generated automatically by CI/CD Pipeline<br/>
+Environment: Production<br/>
+Commit: {{COMMIT_ID}}
 </div>
 
 </body>
