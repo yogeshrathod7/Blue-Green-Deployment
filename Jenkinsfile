@@ -72,10 +72,10 @@ pipeline {
 
             # 1. Download SonarQube issues
             curl -s -u ${SONAR_TOKEN}: \
-            "http://<SONARQUBE_IP>:9000/api/issues/search?componentKeys=Multitier&ps=500" \
+            "http://98.94.90.125:9000/api/issues/search?componentKeys=Multitier&ps=500" \
             -o sonar-report.json
 
-            # 2. Start HTML report
+            # 2. Create HTML report
             cat > sonar-report.html <<EOF
             <html>
             <head>
@@ -102,7 +102,7 @@ pipeline {
                 </tr>
             EOF
 
-            # 3. Append issues (NO jq string interpolation)
+            # 3. Append issues safely
             jq -r '.issues[] | [.type, .severity, .component, (.line // "NA"), .message] | @tsv' sonar-report.json |
             while IFS=$'\\t' read -r type severity component line message
             do
