@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SonarQube Executive Code Quality Report</title>
+
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      margin: 40px;
+      color: #333;
+    }
+
+    h1 {
+      color: #2c7be5;
+      border-bottom: 3px solid #2c7be5;
+      padding-bottom: 10px;
+    }
+
+    h2 {
+      margin-top: 40px;
+      color: #444;
+      border-bottom: 2px solid #ddd;
+      padding-bottom: 6px;
+    }
+
+    .meta p {
+      margin: 4px 0;
+      font-size: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      font-size: 13px;
+    }
+
+    th {
+      background-color: #f4f6f8;
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+
+    td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      vertical-align: top;
+    }
+
+    .status-pass {
+      color: green;
+      font-weight: bold;
+    }
+
+    .status-fail {
+      color: red;
+      font-weight: bold;
+    }
+
+    .footer {
+      margin-top: 50px;
+      font-size: 12px;
+      color: #777;
+      border-top: 1px solid #ddd;
+      padding-top: 10px;
+    }
+
+    .severity-BLOCKER { color: darkred; font-weight: bold; }
+    .severity-CRITICAL { color: red; }
+    .severity-MAJOR { color: #e67e22; }
+    .severity-MINOR { color: #2980b9; }
+    .severity-INFO { color: gray; }
+  </style>
+</head>
+
+<body>
+
+<h1>SonarQube Code Quality Executive Report</h1>
+
+<div class="meta">
+  <p><b>Project:</b> {{PROJECT_NAME}}</p>
+  <p><b>Environment:</b> {{ENVIRONMENT}}</p>
+  <p><b>Generated On:</b> {{GENERATED_DATE}}</p>
+  <p><b>Quality Gate:</b>
+     <span class="status-pass">{{QUALITY_GATE}}</span>
+  </p>
+</div>
+
+<h2>Executive Summary</h2>
+
+<table>
+  <tr><th>Metric</th><th>Value</th></tr>
+  <tr><td>Total Issues</td><td>{{TOTAL_ISSUES}}</td></tr>
+  <tr><td>Bugs</td><td>{{BUGS}}</td></tr>
+  <tr><td>Vulnerabilities</td><td>{{VULNERABILITIES}}</td></tr>
+  <tr><td>Code Smells</td><td>{{CODE_SMELLS}}</td></tr>
+  <tr><td>Reliability Rating</td><td>A</td></tr>
+  <tr><td>Security Rating</td><td>A</td></tr>
+  <tr><td>Maintainability Rating</td><td>A</td></tr>
+</table>
+
+<h2>Detailed Issues</h2>
+
+<table>
+  <tr>
+    <th>Type</th>
+    <th>Severity</th>
+    <th>Component</th>
+    <th>Line</th>
+    <th>Description</th>
+  </tr>
+
+  {{ISSUE_ROWS}}
+
+</table>
+
+<div class="footer">
+  <p>
+    This report was generated automatically by the CI/CD pipeline.<br/>
+    Tool: SonarQube (Community Edition)<br/>
+    Purpose: Production Code Quality Assessment
+  </p>
+</div>
+
+</body>
+</html>
