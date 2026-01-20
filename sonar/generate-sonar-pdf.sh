@@ -7,7 +7,7 @@ set -e
 SONAR_URL="http://98.94.90.125:9000"
 PROJECT_KEY="Multitier"
 ENVIRONMENT="PRODUCTION"
-QUALITY_GATE="ERROR"   # PASSED / ERROR (Jenkins Quality Gate se align kar sakte ho)
+QUALITY_GATE="ERROR"
 
 TEMPLATE_FILE="sonar/sonar-executive-report.html"
 HTML_OUTPUT="sonar-report.html"
@@ -40,7 +40,7 @@ curl -s -u ${SONAR_TOKEN}: \
 -o ${JSON_OUTPUT}
 
 ############################################
-# METRICS CALCULATION
+# METRICS
 ############################################
 TOTAL_ISSUES=$(jq '.total' ${JSON_OUTPUT})
 BUGS=$(jq '[.issues[] | select(.type=="BUG")] | length' ${JSON_OUTPUT})
@@ -48,11 +48,28 @@ VULNS=$(jq '[.issues[] | select(.type=="VULNERABILITY")] | length' ${JSON_OUTPUT
 CODE_SMELLS=$(jq '[.issues[] | select(.type=="CODE_SMELL")] | length' ${JSON_OUTPUT})
 
 ############################################
-# BUILD ISSUE TABLE ROWS (jq-safe)
+# GENERATE BASE HTML (WITHOUT ISSUE ROWS)
 ############################################
-echo "🧩 Building issue rows..."
+echo "📝 Generating base HTML..."
 
-ISSUE_ROWS=$(jq -r '
+sed \
+  -e "s|{{PROJECT_NAME}}|${PROJECT_KEY}|g" \
+  -e "s|{{ENVIRONMENT}}|${ENVIRONMENT}|g" \
+  -e "s|{{GENERATED_DATE}}|$(date)|g" \
+  -e "s|{{QUALITY_GATE}}|${QUALITY_GATE}|g" \
+  -e "s|{{TOTAL_ISSUES}}|${TOTAL_ISSUES}|g" \
+  -e "s|{{BUGS}}|${BUGS}|g" \
+  -e "s|{{VULNERABILITIES}}|${VULNS}|g" \
+  -e "s|{{CODE_SMELLS}}|${CODE_SMELLS}|g" \
+  -e "s|{{ISSUE_ROWS}}||g" \
+  ${TEMPLATE_FILE} > ${HTML_OUTPUT}
+
+############################################
+# INSERT ISSUE ROWS SAFELY (LINE BY LINE)
+############################################
+echo "🧩 Inserting issue rows..."
+
+jq -r '
   .issues[] |
   "<tr>" +
   "<td>" + .type + "</td>" +
@@ -61,19 +78,16 @@ ISSUE_ROWS=$(jq -r '
   "<td>" + ((.line | tostring) // "NA") + "</td>" +
   "<td>" + .message + "</td>" +
   "</tr>"
-' ${JSON_OUTPUT})
+' ${JSON_OUTPUT} >> ${HTML_OUTPUT}
 
 ############################################
-# GENERATE FINAL HTML FROM TEMPLATE
+# CONVERT HTML → PDF
 ############################################
-echo "📝 Generating HTML report..."
+echo "📄 Converting HTML to PDF..."
+wkhtmltopdf ${HTML_OUTPUT} ${PDF_OUTPUT}
 
-sed -e "s|{{PROJECT_NAME}}|${PROJECT_KEY}|g" \
-    -e "s|{{ENVIRONMENT}}|${ENVIRONMENT}|g" \
-    -e "s|{{GENERATED_DATE}}|$(date)|g" \
-    -e "s|{{QUALITY_GATE}}|${QUALITY_GATE}|g" \
-    -e "s|{{TOTAL_ISSUES}}|${TOTAL_ISSUES}|g" \
-    -e "s|{{BUGS}}|${BUGS}|g" \
-    -e "s|{{VULNERABILITIES}}|${VULNS}|g" \
-    -e "s|{{CODE_SMELLS}}|${CODE_SMELLS}|g" \
-    -e
+############################################
+# FINAL CHECK
+############################################
+echo "✅ SonarQube Executive PDF generated successfully:"
+ls -lh ${PDF_OUTPUT}
