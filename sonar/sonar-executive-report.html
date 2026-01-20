@@ -54,11 +54,6 @@
       font-weight: bold;
     }
 
-    .status-fail {
-      color: red;
-      font-weight: bold;
-    }
-
     .footer {
       margin-top: 50px;
       font-size: 12px;
@@ -83,9 +78,7 @@
   <p><b>Project:</b> {{PROJECT_NAME}}</p>
   <p><b>Environment:</b> {{ENVIRONMENT}}</p>
   <p><b>Generated On:</b> {{GENERATED_DATE}}</p>
-  <p><b>Quality Gate:</b>
-     <span class="status-pass">{{QUALITY_GATE}}</span>
-  </p>
+  <p><b>Quality Gate:</b> <span class="status-pass">{{QUALITY_GATE}}</span></p>
 </div>
 
 <h2>Executive Summary</h2>
@@ -117,11 +110,9 @@
 </table>
 
 <div class="footer">
-  <p>
-    This report was generated automatically by the CI/CD pipeline.<br/>
-    Tool: SonarQube (Community Edition)<br/>
-    Purpose: Production Code Quality Assessment
-  </p>
+  This report was generated automatically by the CI/CD pipeline.<br/>
+  Tool: SonarQube (Community Edition)<br/>
+  Purpose: Production Code Quality Assessment
 </div>
 
 </body>
