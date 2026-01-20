@@ -70,19 +70,22 @@ pipeline {
             sh '''
             set -e
 
-            # 1. Download SonarQube issues
+            echo "Checking required tools..."
+            jq --version
+            wkhtmltopdf --version
+
+            echo "Downloading SonarQube issues..."
             curl -s -u ${SONAR_TOKEN}: \
             "http://98.94.90.125:9000/api/issues/search?componentKeys=Multitier&ps=500" \
             -o sonar-report.json
 
-            # 2. Create HTML report
+            echo "Creating HTML report..."
             cat > sonar-report.html <<EOF
             <html>
             <head>
               <title>SonarQube Scan Report - Multitier</title>
               <style>
                 body { font-family: Arial; }
-                h1 { color: #2c7be5; }
                 table { border-collapse: collapse; width: 100%; }
                 th, td { border: 1px solid #ddd; padding: 8px; }
                 th { background-color: #f2f2f2; }
@@ -90,8 +93,8 @@ pipeline {
             </head>
             <body>
               <h1>SonarQube Scan Report</h1>
-              <p><b>Project:</b> Multitier</p>
-              <p><b>Generated:</b> $(date)</p>
+              <p>Project: Multitier</p>
+              <p>Generated: $(date)</p>
               <table>
                 <tr>
                   <th>Type</th>
@@ -102,18 +105,18 @@ pipeline {
                 </tr>
             EOF
 
-            # 3. Append issues safely
             jq -r '.issues[] | [.type, .severity, .component, (.line // "NA"), .message] | @tsv' sonar-report.json |
             while IFS=$'\\t' read -r type severity component line message
             do
               echo "<tr><td>$type</td><td>$severity</td><td>$component</td><td>$line</td><td>$message</td></tr>" >> sonar-report.html
             done
 
-            # 4. Close HTML
             echo "</table></body></html>" >> sonar-report.html
 
-            # 5. Convert HTML to PDF
+            echo "Converting HTML to PDF..."
             wkhtmltopdf sonar-report.html sonar-report.pdf
+
+            ls -lh sonar-report.pdf
             '''
         }
 
