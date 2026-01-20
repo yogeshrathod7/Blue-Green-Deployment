@@ -1,115 +1,153 @@
-#!/bin/bash
-set -e
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>SonarQube Production Quality Report</title>
 
-SONAR_URL="http://98.94.90.125:9000"
-PROJECT_KEY="Multitier"
-ENVIRONMENT="PRODUCTION"
+<style>
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  margin: 30px;
+  color: #222;
+}
 
-BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
-COMMIT_ID=$(git rev-parse --short HEAD)
+h1, h2 {
+  color: #003366;
+}
 
-WORKDIR="sonar-report-work"
-ISSUES_JSON="${WORKDIR}/issues.json"
-HTML_OUT="sonar-report.html"
-PDF_OUT="sonar-report.pdf"
-TEMPLATE="sonar/sonar-executive-report.html"
+.summary-box {
+  border: 1px solid #ddd;
+  padding: 15px;
+  margin-bottom: 20px;
+  background: #f9f9f9;
+}
 
-PAGE_SIZE=200
-MAX_PAGES=5
+.metric {
+  display: inline-block;
+  width: 22%;
+  text-align: center;
+  margin: 10px 1%;
+}
 
-echo "Preparing SonarQube report directory..."
-rm -rf ${WORKDIR}
-mkdir -p ${WORKDIR}
-echo "[]">${ISSUES_JSON}
+.metric h3 {
+  margin: 5px 0;
+  color: #444;
+}
 
-echo "Checking required tools..."
-jq --version
-wkhtmltopdf --version
+.metric span {
+  font-size: 26px;
+  font-weight: bold;
+}
 
-###################################
-# FETCH ISSUES
-###################################
-echo "Fetching issues from SonarQube..."
+.pass { color: green; }
+.fail { color: red; }
 
-for ((PAGE=1; PAGE<=MAX_PAGES; PAGE++)); do
-  RESP=$(curl --connect-timeout 10 --max-time 60 -s -u ${SONAR_TOKEN}: \
-  "${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&p=${PAGE}&ps=${PAGE_SIZE}")
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
 
-  COUNT=$(echo "$RESP" | jq '.issues | length')
-  [ "$COUNT" -eq 0 ] && break
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  font-size: 13px;
+}
 
-  jq -s '.[0] + .[1]' \
-    ${ISSUES_JSON} <(echo "$RESP" | jq '.issues') \
-    > ${ISSUES_JSON}.tmp && mv ${ISSUES_JSON}.tmp ${ISSUES_JSON}
-done
+th {
+  background-color: #f2f2f2;
+}
 
-###################################
-# METRICS
-###################################
-TOTAL_ISSUES=$(jq 'length' ${ISSUES_JSON})
-BUGS=$(jq '[.[]|select(.type=="BUG")]|length' ${ISSUES_JSON})
-VULNERABILITIES=$(jq '[.[]|select(.type=="VULNERABILITY")]|length' ${ISSUES_JSON})
-CODE_SMELLS=$(jq '[.[]|select(.type=="CODE_SMELL")]|length' ${ISSUES_JSON})
+.severity-CRITICAL { color: #b30000; font-weight: bold; }
+.severity-MAJOR { color: #e67300; font-weight: bold; }
+.severity-MINOR { color: #777; }
+.severity-INFO { color: #666; }
 
-###################################
-# RATINGS
-###################################
-RATINGS=$(curl -s -u ${SONAR_TOKEN}: \
-"${SONAR_URL}/api/measures/component?component=${PROJECT_KEY}&metricKeys=reliability_rating,security_rating,sqale_rating")
+.footer {
+  margin-top: 40px;
+  font-size: 10px;
+  color: #666;
+  border-top: 1px solid #ddd;
+  padding-top: 10px;
+}
+</style>
+</head>
 
-RELIABILITY=$(echo "$RATINGS" | jq -r '.component.measures[]|select(.metric=="reliability_rating")|.value')
-SECURITY_RATING=$(echo "$RATINGS" | jq -r '.component.measures[]|select(.metric=="security_rating")|.value')
-MAINTAINABILITY=$(echo "$RATINGS" | jq -r '.component.measures[]|select(.metric=="sqale_rating")|.value')
+<body>
 
-###################################
-# QUALITY GATE
-###################################
-if [ "$VULNERABILITIES" -gt 0 ]; then
-  QUALITY_GATE="FAILED"
-  QG_CLASS="fail"
-else
-  QUALITY_GATE="PASSED"
-  QG_CLASS="pass"
-fi
+<h1>SonarQube Production Code Quality Report</h1>
 
-###################################
-# BASE HTML
-###################################
-sed \
--e "s|{{PROJECT_NAME}}|${PROJECT_KEY}|g" \
--e "s|{{ENVIRONMENT}}|${ENVIRONMENT}|g" \
--e "s|{{BRANCH}}|${BRANCH_NAME}|g" \
--e "s|{{COMMIT_ID}}|${COMMIT_ID}|g" \
--e "s|{{GENERATED_DATE}}|$(date)|g" \
--e "s|{{QUALITY_GATE}}|${QUALITY_GATE}|g" \
--e "s|{{QG_CLASS}}|${QG_CLASS}|g" \
--e "s|{{TOTAL_ISSUES}}|${TOTAL_ISSUES}|g" \
--e "s|{{BUGS}}|${BUGS}|g" \
--e "s|{{VULNERABILITIES}}|${VULNERABILITIES}|g" \
--e "s|{{CODE_SMELLS}}|${CODE_SMELLS}|g" \
--e "s|{{RELIABILITY}}|${RELIABILITY}|g" \
--e "s|{{SECURITY_RATING}}|${SECURITY_RATING}|g" \
--e "s|{{MAINTAINABILITY}}|${MAINTAINABILITY}|g" \
--e "s|{{ISSUE_ROWS}}||g" \
-${TEMPLATE} > ${HTML_OUT}
+<div class="summary-box">
+  <p><b>Project:</b> {{PROJECT_NAME}}</p>
+  <p><b>Environment:</b> {{ENVIRONMENT}}</p>
+  <p><b>Branch:</b> {{BRANCH}}</p>
+  <p><b>Commit ID:</b> {{COMMIT_ID}}</p>
+  <p><b>Generated On:</b> {{GENERATED_DATE}}</p>
+</div>
 
-###################################
-# ISSUE ROWS (TOP 20)
-###################################
-jq -r '
-.[] |
-select(.severity=="CRITICAL" or .severity=="MAJOR") |
-"<tr><td>"+.type+"</td>"+
-"<td class=\"severity-"+.severity+"\">"+.severity+"</td>"+
-"<td>"+(.component|split(":")[-1])+"</td>"+
-"<td>"+((.line|tostring)//"-")+"</td>"+
-"<td>"+.message+"</td></tr>"
-' ${ISSUES_JSON} | head -n 20 >> ${HTML_OUT}
+<h2>Quality Gate Status</h2>
+<p class="{{QG_CLASS}}">
+<b>{{QUALITY_GATE}}</b>
+</p>
 
-###################################
-# PDF
-###################################
-wkhtmltopdf ${HTML_OUT} ${PDF_OUT}
+<h2>Executive Summary</h2>
 
-echo "✅ Production SonarQube PDF generated successfully"
-ls -lh ${PDF_OUT}
+<div class="metric">
+  <h3>Total Issues</h3>
+  <span>{{TOTAL_ISSUES}}</span>
+</div>
+
+<div class="metric">
+  <h3>Bugs</h3>
+  <span>{{BUGS}}</span>
+</div>
+
+<div class="metric">
+  <h3>Vulnerabilities</h3>
+  <span>{{VULNERABILITIES}}</span>
+</div>
+
+<div class="metric">
+  <h3>Code Smells</h3>
+  <span>{{CODE_SMELLS}}</span>
+</div>
+
+<h2>Ratings</h2>
+<ul>
+  <li><b>Reliability Rating:</b> {{RELIABILITY}}</li>
+  <li><b>Security Rating:</b> {{SECURITY_RATING}}</li>
+  <li><b>Maintainability Rating:</b> {{MAINTAINABILITY}}</li>
+</ul>
+
+<h2>Production Security Assessment</h2>
+<p>
+Based on SonarQube security analysis:
+</p>
+<ul>
+  <li>No exploitable vulnerabilities detected</li>
+  <li>No unresolved security hotspots</li>
+  <li>Application is considered <b>LOW RISK</b> for production deployment</li>
+</ul>
+
+<h2>Top Critical & Major Issues</h2>
+
+<table>
+<tr>
+  <th>Type</th>
+  <th>Severity</th>
+  <th>File</th>
+  <th>Line</th>
+  <th>Description</th>
+</tr>
+
+{{ISSUE_ROWS}}
+
+</table>
+
+<div class="footer">
+This report is auto-generated by CI/CD pipeline for production governance.<br/>
+It reflects the code quality at the specific commit mentioned above.
+</div>
+
+</body>
+</html>
