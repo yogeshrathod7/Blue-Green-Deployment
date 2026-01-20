@@ -68,19 +68,21 @@ pipeline {
     steps {
         withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
             sh '''
-            # 1. Download SonarQube issues as JSON
+            set -e
+
+            # 1. Download SonarQube issues
             curl -s -u ${SONAR_TOKEN}: \
             "http://<SONARQUBE_IP>:9000/api/issues/search?componentKeys=Multitier&ps=500" \
             -o sonar-report.json
 
-            # 2. Convert JSON to simple HTML
-            cat <<EOF > sonar-report.html
+            # 2. Start HTML report
+            cat > sonar-report.html <<EOF
             <html>
             <head>
               <title>SonarQube Scan Report - Multitier</title>
               <style>
                 body { font-family: Arial; }
-                h1 { color: #4CAF50; }
+                h1 { color: #2c7be5; }
                 table { border-collapse: collapse; width: 100%; }
                 th, td { border: 1px solid #ddd; padding: 8px; }
                 th { background-color: #f2f2f2; }
@@ -88,23 +90,29 @@ pipeline {
             </head>
             <body>
               <h1>SonarQube Scan Report</h1>
-              <p>Project: Multitier</p>
-              <p>Generated on: $(date)</p>
+              <p><b>Project:</b> Multitier</p>
+              <p><b>Generated:</b> $(date)</p>
               <table>
                 <tr>
                   <th>Type</th>
                   <th>Severity</th>
-                  <th>File</th>
+                  <th>Component</th>
                   <th>Line</th>
                   <th>Message</th>
                 </tr>
             EOF
 
-            jq -r '.issues[] | "<tr><td>\(.type)</td><td>\(.severity)</td><td>\(.component)</td><td>\(.line)</td><td>\(.message)</td></tr>"' sonar-report.json >> sonar-report.html
+            # 3. Append issues (NO jq string interpolation)
+            jq -r '.issues[] | [.type, .severity, .component, (.line // "NA"), .message] | @tsv' sonar-report.json |
+            while IFS=$'\\t' read -r type severity component line message
+            do
+              echo "<tr><td>$type</td><td>$severity</td><td>$component</td><td>$line</td><td>$message</td></tr>" >> sonar-report.html
+            done
 
+            # 4. Close HTML
             echo "</table></body></html>" >> sonar-report.html
 
-            # 3. Convert HTML to PDF
+            # 5. Convert HTML to PDF
             wkhtmltopdf sonar-report.html sonar-report.pdf
             '''
         }
@@ -112,6 +120,7 @@ pipeline {
         archiveArtifacts artifacts: 'sonar-report.pdf'
     }
 }
+
         
         stage('Build') {
             steps {
