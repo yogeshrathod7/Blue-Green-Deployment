@@ -5,7 +5,7 @@ SONAR_URL="http://98.94.90.125:9000"
 PROJECT_KEY="Multitier"
 ENVIRONMENT="PRODUCTION"
 
-BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
 COMMIT_ID=$(git rev-parse --short HEAD)
 
 WORKDIR="sonar-report-work"
@@ -17,20 +17,27 @@ TEMPLATE="sonar/sonar-executive-report.html"
 PAGE_SIZE=200
 MAX_PAGES=5
 
+grade() {
+  case "$1" in
+    1) echo "A" ;;
+    2) echo "B" ;;
+    3) echo "C" ;;
+    4) echo "D" ;;
+    5) echo "E" ;;
+    *) echo "N/A" ;;
+  esac
+}
+
 echo "Preparing SonarQube report directory..."
 rm -rf ${WORKDIR}
 mkdir -p ${WORKDIR}
-echo "[]">${ISSUES_JSON}
+echo '[]' > ${ISSUES_JSON}
 
 echo "Checking required tools..."
 jq --version
 wkhtmltopdf --version
 
-###################################
-# FETCH ISSUES
-###################################
 echo "Fetching issues from SonarQube..."
-
 for ((PAGE=1; PAGE<=MAX_PAGES; PAGE++)); do
   RESP=$(curl --connect-timeout 10 --max-time 60 -s -u ${SONAR_TOKEN}: \
   "${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&p=${PAGE}&ps=${PAGE_SIZE}")
@@ -43,28 +50,23 @@ for ((PAGE=1; PAGE<=MAX_PAGES; PAGE++)); do
     > ${ISSUES_JSON}.tmp && mv ${ISSUES_JSON}.tmp ${ISSUES_JSON}
 done
 
-###################################
-# METRICS
-###################################
-TOTAL_ISSUES=$(jq 'length' ${ISSUES_JSON})
-BUGS=$(jq '[.[]|select(.type=="BUG")]|length' ${ISSUES_JSON})
-VULNERABILITIES=$(jq '[.[]|select(.type=="VULNERABILITY")]|length' ${ISSUES_JSON})
-CODE_SMELLS=$(jq '[.[]|select(.type=="CODE_SMELL")]|length' ${ISSUES_JSON})
+# Exclude report files
+jq '[.[] | select(.component | contains("sonar-report") | not)]' \
+  ${ISSUES_JSON} > ${ISSUES_JSON}.tmp && mv ${ISSUES_JSON}.tmp ${ISSUES_JSON}
 
-###################################
-# RATINGS
-###################################
+TOTAL_ISSUES=$(jq 'length' ${ISSUES_JSON})
+CRITICAL_ISSUES=$(jq '[.[]|select(.severity=="CRITICAL")]|length' ${ISSUES_JSON})
+MAJOR_ISSUES=$(jq '[.[]|select(.severity=="MAJOR")]|length' ${ISSUES_JSON})
+VULNERABILITIES=$(jq '[.[]|select(.type=="VULNERABILITY")]|length' ${ISSUES_JSON})
+
 RATINGS=$(curl -s -u ${SONAR_TOKEN}: \
 "${SONAR_URL}/api/measures/component?component=${PROJECT_KEY}&metricKeys=reliability_rating,security_rating,sqale_rating")
 
-RELIABILITY=$(echo "$RATINGS" | jq -r '.component.measures[]|select(.metric=="reliability_rating")|.value')
-SECURITY_RATING=$(echo "$RATINGS" | jq -r '.component.measures[]|select(.metric=="security_rating")|.value')
-MAINTAINABILITY=$(echo "$RATINGS" | jq -r '.component.measures[]|select(.metric=="sqale_rating")|.value')
+RELIABILITY_GRADE=$(grade "$(echo "$RATINGS" | jq -r '.component.measures[]|select(.metric=="reliability_rating")|.value')")
+SECURITY_GRADE=$(grade "$(echo "$RATINGS" | jq -r '.component.measures[]|select(.metric=="security_rating")|.value')")
+MAINTAINABILITY_GRADE=$(grade "$(echo "$RATINGS" | jq -r '.component.measures[]|select(.metric=="sqale_rating")|.value')")
 
-###################################
-# QUALITY GATE
-###################################
-if [ "$VULNERABILITIES" -gt 0 ]; then
+if [ "$CRITICAL_ISSUES" -gt 0 ]; then
   QUALITY_GATE="FAILED"
   QG_CLASS="fail"
 else
@@ -72,30 +74,24 @@ else
   QG_CLASS="pass"
 fi
 
-###################################
-# BASE HTML
-###################################
 sed \
 -e "s|{{PROJECT_NAME}}|${PROJECT_KEY}|g" \
 -e "s|{{ENVIRONMENT}}|${ENVIRONMENT}|g" \
--e "s|{{BRANCH}}|${BRANCH_NAME}|g" \
+-e "s|{{BRANCH}}|${BRANCH}|g" \
 -e "s|{{COMMIT_ID}}|${COMMIT_ID}|g" \
 -e "s|{{GENERATED_DATE}}|$(date)|g" \
 -e "s|{{QUALITY_GATE}}|${QUALITY_GATE}|g" \
 -e "s|{{QG_CLASS}}|${QG_CLASS}|g" \
 -e "s|{{TOTAL_ISSUES}}|${TOTAL_ISSUES}|g" \
--e "s|{{BUGS}}|${BUGS}|g" \
+-e "s|{{CRITICAL_ISSUES}}|${CRITICAL_ISSUES}|g" \
+-e "s|{{MAJOR_ISSUES}}|${MAJOR_ISSUES}|g" \
 -e "s|{{VULNERABILITIES}}|${VULNERABILITIES}|g" \
--e "s|{{CODE_SMELLS}}|${CODE_SMELLS}|g" \
--e "s|{{RELIABILITY}}|${RELIABILITY}|g" \
--e "s|{{SECURITY_RATING}}|${SECURITY_RATING}|g" \
--e "s|{{MAINTAINABILITY}}|${MAINTAINABILITY}|g" \
+-e "s|{{RELIABILITY_GRADE}}|${RELIABILITY_GRADE}|g" \
+-e "s|{{SECURITY_GRADE}}|${SECURITY_GRADE}|g" \
+-e "s|{{MAINTAINABILITY_GRADE}}|${MAINTAINABILITY_GRADE}|g" \
 -e "s|{{ISSUE_ROWS}}||g" \
 ${TEMPLATE} > ${HTML_OUT}
 
-###################################
-# ISSUE ROWS (TOP 20)
-###################################
 jq -r '
 .[] |
 select(.severity=="CRITICAL" or .severity=="MAJOR") |
@@ -104,12 +100,9 @@ select(.severity=="CRITICAL" or .severity=="MAJOR") |
 "<td>"+(.component|split(":")[-1])+"</td>"+
 "<td>"+((.line|tostring)//"-")+"</td>"+
 "<td>"+.message+"</td></tr>"
-' ${ISSUES_JSON} | head -n 20 >> ${HTML_OUT}
+' ${ISSUES_JSON} | head -n 15 >> ${HTML_OUT}
 
-###################################
-# PDF
-###################################
 wkhtmltopdf ${HTML_OUT} ${PDF_OUT}
 
-echo "✅ Production SonarQube PDF generated successfully"
+echo "✅ Clean Production SonarQube PDF generated"
 ls -lh ${PDF_OUT}
