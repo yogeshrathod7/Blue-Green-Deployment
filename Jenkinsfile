@@ -67,11 +67,18 @@ pipeline {
         stage('Generate SonarQube Executive PDF Report') {
     steps {
         withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-            sh 'sonar/generate-sonar-pdf.sh'
+            sh '''
+              echo "Fixing script permission..."
+              chmod +x sonar/generate-sonar-pdf.sh
+
+              echo "Running SonarQube PDF generator..."
+              sonar/generate-sonar-pdf.sh
+            '''
         }
         archiveArtifacts artifacts: 'sonar-report.pdf'
     }
 }
+
 
 
         
