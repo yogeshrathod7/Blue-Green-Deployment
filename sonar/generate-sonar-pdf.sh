@@ -2,29 +2,26 @@
 set -e
 
 #################################################
-# CONFIGURATION
+# CONFIG
 #################################################
 SONAR_URL="http://98.94.90.125:9000"
 PROJECT_KEY="Multitier"
 ENVIRONMENT="PRODUCTION"
 
-# Jenkins / Git info
 BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
 COMMIT_ID=$(git rev-parse --short HEAD)
 
-# Files
 WORKDIR="sonar-report-work"
-JSON_ALL="${WORKDIR}/issues.json"
+ISSUES_JSON="${WORKDIR}/issues.json"
 HTML_OUT="sonar-report.html"
 PDF_OUT="sonar-report.pdf"
 TEMPLATE_FILE="sonar/sonar-executive-report.html"
 
-# Pagination
 PAGE_SIZE=200
-MAX_PAGES=10   # max 2000 issues (safe limit)
+MAX_PAGES=10
 
 #################################################
-# PRE-CHECKS
+# PREP
 #################################################
 echo "Preparing SonarQube report directory..."
 rm -rf ${WORKDIR}
@@ -40,16 +37,16 @@ if [ -z "$SONAR_TOKEN" ]; then
 fi
 
 if [ ! -f "${TEMPLATE_FILE}" ]; then
-  echo "❌ HTML template not found: ${TEMPLATE_FILE}"
+  echo "❌ HTML template not found"
   exit 1
 fi
 
 #################################################
-# FETCH ISSUES (PAGINATED + TIMEOUT SAFE)
+# FETCH ISSUES (ARRAY-ONLY SAFE METHOD)
 #################################################
 echo "Fetching issues from SonarQube..."
 
-echo '{"issues":[],"total":0}' > ${JSON_ALL}
+echo '[]' > ${ISSUES_JSON}
 
 for ((PAGE=1; PAGE<=MAX_PAGES; PAGE++)); do
   echo "→ Fetching page ${PAGE}..."
@@ -59,33 +56,88 @@ for ((PAGE=1; PAGE<=MAX_PAGES; PAGE++)); do
               -s -u ${SONAR_TOKEN}: \
               "${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&p=${PAGE}&ps=${PAGE_SIZE}")
 
-  COUNT=$(echo "$RESP" | jq '.issues | length')
+  PAGE_COUNT=$(echo "$RESP" | jq '.issues | length')
 
-  if [ "$COUNT" -eq 0 ]; then
+  if [ "$PAGE_COUNT" -eq 0 ]; then
     echo "No more issues found, stopping pagination."
     break
   fi
 
-  jq -s '
-    .[0].issues += .[1].issues |
-    .[0].total += .[1].total
-  ' ${JSON_ALL} <(echo "$RESP") > ${JSON_ALL}.tmp
+  jq -s '.[0] + .[1]' \
+     ${ISSUES_JSON} <(echo "$RESP" | jq '.issues') \
+     > ${ISSUES_JSON}.tmp
 
-  mv ${JSON_ALL}.tmp ${JSON_ALL}
+  mv ${ISSUES_JSON}.tmp ${ISSUES_JSON}
 done
 
 #################################################
-# METRICS CALCULATION
+# METRICS
 #################################################
-TOTAL_ISSUES=$(jq '.issues | length' ${JSON_ALL})
-BUGS=$(jq '[.issues[] | select(.type=="BUG")] | length' ${JSON_ALL})
-VULNERABILITIES=$(jq '[.issues[] | select(.type=="VULNERABILITY")] | length' ${JSON_ALL})
-CODE_SMELLS=$(jq '[.issues[] | select(.type=="CODE_SMELL")] | length' ${JSON_ALL})
-SECURITY_HOTSPOTS=$(jq '[.issues[] | select(.securityHotspot==true)] | length' ${JSON_ALL})
+TOTAL_ISSUES=$(jq 'length' ${ISSUES_JSON})
+BUGS=$(jq '[.[] | select(.type=="BUG")] | length' ${ISSUES_JSON})
+VULNERABILITIES=$(jq '[.[] | select(.type=="VULNERABILITY")] | length' ${ISSUES_JSON})
+CODE_SMELLS=$(jq '[.[] | select(.type=="CODE_SMELL")] | length' ${ISSUES_JSON})
+SECURITY_HOTSPOTS=$(jq '[.[] | select(.securityHotspot==true)] | length' ${ISSUES_JSON})
 
 #################################################
-# QUALITY GATE STATUS (PROD LOGIC)
+# QUALITY GATE (PROD RULE)
 #################################################
 if [ "$VULNERABILITIES" -gt 0 ]; then
   QUALITY_GATE="FAILED"
-  QG_CLASS="_
+  QG_CLASS="fail"
+else
+  QUALITY_GATE="PASSED"
+  QG_CLASS="pass"
+fi
+
+#################################################
+# BASE HTML
+#################################################
+echo "Generating base HTML report..."
+
+sed \
+  -e "s|{{PROJECT_NAME}}|${PROJECT_KEY}|g" \
+  -e "s|{{ENVIRONMENT}}|${ENVIRONMENT}|g" \
+  -e "s|{{BRANCH}}|${BRANCH_NAME}|g" \
+  -e "s|{{COMMIT_ID}}|${COMMIT_ID}|g" \
+  -e "s|{{GENERATED_DATE}}|$(date)|g" \
+  -e "s|{{QUALITY_GATE}}|${QUALITY_GATE}|g" \
+  -e "s|{{QG_CLASS}}|${QG_CLASS}|g" \
+  -e "s|{{TOTAL_ISSUES}}|${TOTAL_ISSUES}|g" \
+  -e "s|{{BUGS}}|${BUGS}|g" \
+  -e "s|{{VULNERABILITIES}}|${VULNERABILITIES}|g" \
+  -e "s|{{SECURITY_HOTSPOTS}}|${SECURITY_HOTSPOTS}|g" \
+  -e "s|{{CODE_SMELLS}}|${CODE_SMELLS}|g" \
+  -e "s|{{ISSUE_ROWS}}||g" \
+  ${TEMPLATE_FILE} > ${HTML_OUT}
+
+#################################################
+# INSERT ISSUE ROWS
+#################################################
+echo "Adding detailed issue rows..."
+
+jq -r '
+  .[] |
+  "<tr>" +
+  "<td>" + .type + "</td>" +
+  "<td class=\"severity-" + .severity + "\">" + .severity + "</td>" +
+  "<td>" + .component + "</td>" +
+  "<td>" + ((.line|tostring)//"NA") + "</td>" +
+  "<td>" + .message + "</td>" +
+  "</tr>"
+' ${ISSUES_JSON} >> ${HTML_OUT}
+
+#################################################
+# HTML → PDF
+#################################################
+echo "Converting HTML to PDF..."
+wkhtmltopdf ${HTML_OUT} ${PDF_OUT}
+
+#################################################
+# DONE
+#################################################
+echo "✅ SonarQube Production Executive PDF generated successfully"
+echo "Commit ID: ${COMMIT_ID}"
+echo "Quality Gate: ${QUALITY_GATE}"
+echo "Vulnerabilities: ${VULNERABILITIES}"
+ls -lh ${PDF_OUT}
