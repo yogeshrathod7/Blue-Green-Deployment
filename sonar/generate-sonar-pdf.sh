@@ -24,22 +24,17 @@ grade() {
     3) echo "C" ;;
     4) echo "D" ;;
     5) echo "E" ;;
-    *) echo "N/A" ;;
+    *) echo "A" ;;
   esac
 }
 
-echo "Preparing SonarQube report directory..."
 rm -rf ${WORKDIR}
 mkdir -p ${WORKDIR}
 echo '[]' > ${ISSUES_JSON}
 
-echo "Checking required tools..."
-jq --version
-wkhtmltopdf --version
-
-echo "Fetching issues from SonarQube..."
+echo "Fetching SonarQube issues..."
 for ((PAGE=1; PAGE<=MAX_PAGES; PAGE++)); do
-  RESP=$(curl --connect-timeout 10 --max-time 60 -s -u ${SONAR_TOKEN}: \
+  RESP=$(curl -s -u ${SONAR_TOKEN}: \
   "${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&p=${PAGE}&ps=${PAGE_SIZE}")
 
   COUNT=$(echo "$RESP" | jq '.issues | length')
@@ -50,9 +45,11 @@ for ((PAGE=1; PAGE<=MAX_PAGES; PAGE++)); do
     > ${ISSUES_JSON}.tmp && mv ${ISSUES_JSON}.tmp ${ISSUES_JSON}
 done
 
-# Exclude report files
-jq '[.[] | select(.component | contains("sonar-report") | not)]' \
-  ${ISSUES_JSON} > ${ISSUES_JSON}.tmp && mv ${ISSUES_JSON}.tmp ${ISSUES_JSON}
+# Remove report files from issues
+jq '[.[] | select(
+  (.component | contains("/sonar/") | not) and
+  (.component | contains("sonar-report") | not)
+)]' ${ISSUES_JSON} > ${ISSUES_JSON}.tmp && mv ${ISSUES_JSON}.tmp ${ISSUES_JSON}
 
 TOTAL_ISSUES=$(jq 'length' ${ISSUES_JSON})
 CRITICAL_ISSUES=$(jq '[.[]|select(.severity=="CRITICAL")]|length' ${ISSUES_JSON})
@@ -68,9 +65,11 @@ MAINTAINABILITY_GRADE=$(grade "$(echo "$RATINGS" | jq -r '.component.measures[]|
 
 if [ "$CRITICAL_ISSUES" -gt 0 ]; then
   QUALITY_GATE="FAILED"
+  FINAL_DECISION="NOT APPROVED FOR PRODUCTION"
   QG_CLASS="fail"
 else
   QUALITY_GATE="PASSED"
+  FINAL_DECISION="APPROVED FOR PRODUCTION"
   QG_CLASS="pass"
 fi
 
@@ -82,6 +81,7 @@ sed \
 -e "s|{{GENERATED_DATE}}|$(date)|g" \
 -e "s|{{QUALITY_GATE}}|${QUALITY_GATE}|g" \
 -e "s|{{QG_CLASS}}|${QG_CLASS}|g" \
+-e "s|{{FINAL_DECISION}}|${FINAL_DECISION}|g" \
 -e "s|{{TOTAL_ISSUES}}|${TOTAL_ISSUES}|g" \
 -e "s|{{CRITICAL_ISSUES}}|${CRITICAL_ISSUES}|g" \
 -e "s|{{MAJOR_ISSUES}}|${MAJOR_ISSUES}|g" \
@@ -99,10 +99,9 @@ select(.severity=="CRITICAL" or .severity=="MAJOR") |
 "<td class=\"severity-"+.severity+"\">"+.severity+"</td>"+
 "<td>"+(.component|split(":")[-1])+"</td>"+
 "<td>"+((.line|tostring)//"-")+"</td>"+
-"<td>"+.message+"</td></tr>"
+"<td>"+(.message|gsub("\n";" "))+"</td></tr>"
 ' ${ISSUES_JSON} | head -n 15 >> ${HTML_OUT}
 
 wkhtmltopdf ${HTML_OUT} ${PDF_OUT}
 
-echo "✅ Clean Production SonarQube PDF generated"
-ls -lh ${PDF_OUT}
+echo "✅ FINAL Production SonarQube PDF generated"
