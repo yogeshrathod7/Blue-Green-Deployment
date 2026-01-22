@@ -64,21 +64,37 @@ pipeline {
                 }
             }
         }
-        stage('Generate SonarQube Executive PDF Report') {
-    steps {
-        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-            sh '''
-              echo "Fixing script permission..."
-              chmod +x sonar/generate-sonar-pdf.sh
+//         stage('Generate SonarQube Executive PDF Report') {
+//     steps {
+//         withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+//             sh '''
+//               echo "Fixing script permission..."
+//               chmod +x sonar/generate-sonar-pdf.sh
 
-              echo "Running SonarQube PDF generator..."
-              sonar/generate-sonar-pdf.sh
+//               echo "Running SonarQube PDF generator..."
+//               sonar/generate-sonar-pdf.sh
+//             '''
+//         }
+//         archiveArtifacts artifacts: 'sonar-report.pdf'
+//     }
+// }
+
+        stage('SonarQube Text Report') {
+    steps {
+        withSonarQubeEnv('sonar') {
+            sh '''
+            echo "Fetching SonarQube Issues Report..."
+
+            curl -s -u ${SONAR_AUTH_TOKEN}: \
+            "$SONAR_HOST_URL/api/issues/search?componentKeys=Multitier&types=BUG,VULNERABILITY,CODE_SMELL" \
+            | jq -r '.issues[] |
+              "Key: \\(.key) | Severity: \\(.severity) | Type: \\(.type) | File: \\(.component) | Message: \\(.message)"' \
+            > sonar-report.txt
             '''
         }
-        archiveArtifacts artifacts: 'sonar-report.pdf'
+        archiveArtifacts artifacts: 'sonar-report.txt', fingerprint: true
     }
 }
-
 
 
         
