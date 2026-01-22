@@ -79,22 +79,40 @@ pipeline {
 //     }
 // }
 
-        stage('SonarQube Text Report') {
+        stage('SonarQube TEXT Report') {
     steps {
         withSonarQubeEnv('sonar') {
             sh '''
-            echo "Fetching SonarQube Issues Report..."
+            echo "===============================" > sonar-report.txt
+            echo " SonarQube Code Quality Report " >> sonar-report.txt
+            echo " Project : Multitier" >> sonar-report.txt
+            echo " Date    : $(date)" >> sonar-report.txt
+            echo "===============================" >> sonar-report.txt
+            echo "" >> sonar-report.txt
+
+            echo "---- QUALITY GATE STATUS ----" >> sonar-report.txt
+            curl -s -u ${SONAR_AUTH_TOKEN}: \
+              "$SONAR_HOST_URL/api/qualitygates/project_status?projectKey=Multitier" \
+              | jq -r '.projectStatus.status' \
+              | awk '{print "Quality Gate : " $1}' >> sonar-report.txt
+
+            echo "" >> sonar-report.txt
+            echo "---- ISSUES SUMMARY ----" >> sonar-report.txt
 
             curl -s -u ${SONAR_AUTH_TOKEN}: \
-            "$SONAR_HOST_URL/api/issues/search?componentKeys=Multitier&types=BUG,VULNERABILITY,CODE_SMELL" \
-            | jq -r '.issues[] |
-              "Key: \\(.key) | Severity: \\(.severity) | Type: \\(.type) | File: \\(.component) | Message: \\(.message)"' \
-            > sonar-report.txt
+              "$SONAR_HOST_URL/api/issues/search?componentKeys=Multitier&types=BUG,VULNERABILITY,CODE_SMELL&ps=500" \
+              | jq -r '.issues[] |
+                "Type: \\(.type)
+Severity: \\(.severity)
+File: \\(.component)
+Message: \\(.message)
+-----------------------------"' >> sonar-report.txt
             '''
         }
         archiveArtifacts artifacts: 'sonar-report.txt', fingerprint: true
     }
 }
+
 
 
         
